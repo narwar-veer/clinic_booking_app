@@ -36,6 +36,8 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authenticationProvider(authenticationProvider())
                 .authorizeHttpRequests(auth -> auth
+                        // Permitting the root and common health/error paths
+                        .requestMatchers("/", "/error", "/favicon.ico").permitAll()
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/doctor/**", "/api/clinic/**", "/api/slots/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/health").permitAll()
