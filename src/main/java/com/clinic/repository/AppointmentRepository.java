@@ -1,7 +1,10 @@
 package com.clinic.repository;
 
 import com.clinic.entity.Appointment;
+import com.clinic.entity.AppointmentStatus;
+import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
@@ -23,4 +26,11 @@ public interface AppointmentRepository extends JpaRepository<Appointment, Long>,
     @Override
     @EntityGraph(attributePaths = {"patient", "slot", "slot.clinic", "slot.clinic.doctor"})
     List<Appointment> findAll(Specification<Appointment> specification, Sort sort);
+
+    @EntityGraph(attributePaths = {"slot"})
+    Optional<Appointment> findFirstByPatientIdAndSlotSlotDateAndStatusNotOrderBySlotStartTimeAsc(
+            Long patientId,
+            LocalDate slotDate,
+            AppointmentStatus status
+    );
 }
