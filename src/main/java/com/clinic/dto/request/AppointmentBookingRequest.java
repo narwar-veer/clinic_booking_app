@@ -17,7 +17,7 @@ public class AppointmentBookingRequest {
     private String name;
 
     @NotBlank
-    @Pattern(regexp = "^[+]?[0-9]{10,15}$", message = "Phone must be 10-15 digits")
+    @Pattern(regexp = "^\\+91[0-9]{10}$", message = "Phone must be in +91XXXXXXXXXX format")
     private String phone;
 
     @NotNull
