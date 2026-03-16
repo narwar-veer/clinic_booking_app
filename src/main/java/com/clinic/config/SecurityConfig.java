@@ -42,14 +42,13 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authenticationProvider(authenticationProvider())
                 .authorizeHttpRequests(auth -> auth
-                        // Public endpoints
+                        // Publicly accessible paths
                         .requestMatchers("/", "/error", "/favicon.ico").permitAll()
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/doctor/**", "/api/clinic/**", "/api/slots/**").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/health").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/doctor/**", "/api/clinic/**", "/api/slots/**", "/api/health").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/appointments/**", "/api/admin/login/**").permitAll()
                         .requestMatchers("/actuator/health").permitAll()
-                        // Secured endpoints
+                        // Any other request requires authentication
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
@@ -60,14 +59,24 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        // Exact match for your Vercel URL - No trailing slash!
-        configuration.setAllowedOrigins(List.of("https://clinicsphere.vercel.app"));
+        
+        // Allowed Origins - Ensure NO trailing slashes
+        configuration.setAllowedOrigins(List.of(
+                "http://localhost:3000",
+                "https://clinicsphere.vercel.app",
+                "https://clinic-app-demo.vercel.app"
+        ));
+        
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "Accept"));
+        
+        // Allows the browser to read the JWT token if it's sent in the header
         configuration.setExposedHeaders(List.of("Authorization"));
+        
         configuration.setAllowCredentials(true);
         
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        // Register for all paths to ensure consistency
         source.registerCorsConfiguration("/**", configuration);
         return source;
     }
