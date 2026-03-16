@@ -1,6 +1,4 @@
 package com.clinic.service;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import com.clinic.dto.request.AdminAppointmentUpdateRequest;
 import com.clinic.dto.request.AppointmentBookingRequest;
@@ -22,6 +20,8 @@ import com.clinic.repository.SlotRepository;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
+import java.util.Locale;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -29,10 +29,15 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @Service
 @RequiredArgsConstructor
 public class AppointmentService {
+
+    private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("dd MMM yyyy", Locale.ENGLISH);
+    private static final DateTimeFormatter TIME_FORMAT = DateTimeFormatter.ofPattern("hh:mm a", Locale.ENGLISH);
 
     private final SlotRepository slotRepository;
     private final PatientRepository patientRepository;
@@ -55,9 +60,13 @@ public class AppointmentService {
             throw new SlotFullException("Selected slot is fully booked");
         }
 
-        Patient patient = patientRepository.findByPhone(request.getPhone())
-                .map(existing -> updatePatient(existing, request))
-                .orElseGet(() -> createPatient(request));
+        Patient patient = patientRepository.findByPhoneForUpdate(request.getPhone()).orElse(null);
+        if (patient != null) {
+            ensureNoDuplicateBookingForDate(patient.getId(), slot.getSlotDate());
+            patient = updatePatient(patient, request);
+        } else {
+            patient = createPatient(request);
+        }
         patient = patientRepository.save(patient);
 
         Appointment appointment = new Appointment();
@@ -71,12 +80,12 @@ public class AppointmentService {
         slotRepository.save(slot);
 
         Long appointmentId = appointment.getId();
-TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-    @Override
-    public void afterCommit() {
-        notificationService.sendAppointmentConfirmationAsync(appointmentId);
-    }
-});
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                notificationService.sendAppointmentConfirmationAsync(appointmentId);
+            }
+        });
         return appointmentMapper.toResponse(appointment);
     }
 
@@ -167,5 +176,21 @@ TransactionSynchronizationManager.registerSynchronization(new TransactionSynchro
         patient.setAge(request.getAge());
         patient.setGender(request.getGender());
         return patient;
+    }
+
+    private void ensureNoDuplicateBookingForDate(Long patientId, LocalDate slotDate) {
+        appointmentRepository
+                .findFirstByPatientIdAndSlotSlotDateAndStatusNotOrderBySlotStartTimeAsc(
+                        patientId,
+                        slotDate,
+                        AppointmentStatus.CANCELLED
+                )
+                .ifPresent(existing -> {
+                    String date = existing.getSlot().getSlotDate().format(DATE_FORMAT);
+                    String start = existing.getSlot().getStartTime().format(TIME_FORMAT);
+                    String end = existing.getSlot().getEndTime().format(TIME_FORMAT);
+                    throw new BadRequestException(
+                            "Appointment is already booked on " + date + " at " + start + " - " + end);
+                });
     }
 }
