@@ -1,7 +1,6 @@
 package com.clinic.security;
 
 import com.clinic.service.AdminSessionService;
-import io.jsonwebtoken.JwtException;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -54,7 +53,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     SecurityContextHolder.getContext().setAuthentication(authenticationToken);
                 }
             }
-        } catch (JwtException | IllegalArgumentException | UsernameNotFoundException ex) {
+        } catch (IllegalArgumentException | UsernameNotFoundException ex) {
             // Any token parsing / user lookup error should fail authentication silently,
             // not break request handling with a 500.
             log.warn("Ignoring invalid JWT authentication: {}", ex.getMessage());
