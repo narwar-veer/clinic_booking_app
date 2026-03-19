@@ -1,5 +1,6 @@
 package com.clinic.security;
 
+import com.clinic.service.AdminSessionService;
 import io.jsonwebtoken.JwtException;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -22,6 +23,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtService jwtService;
     private final AdminDetailsService adminDetailsService;
+    private final AdminSessionService adminSessionService;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
@@ -35,7 +37,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         String token = authHeader.substring(7);
         try {
             String username = jwtService.extractUsername(token);
-            if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+            String tokenId = jwtService.extractTokenId(token);
+            if (username != null
+                    && tokenId != null
+                    && adminSessionService.validateAndTouchSession(tokenId)
+                    && SecurityContextHolder.getContext().getAuthentication() == null) {
                 AdminPrincipal adminPrincipal = (AdminPrincipal) adminDetailsService.loadUserByUsername(username);
                 if (jwtService.isTokenValid(token, adminPrincipal)) {
                     UsernamePasswordAuthenticationToken authenticationToken =
