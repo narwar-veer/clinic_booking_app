@@ -24,35 +24,28 @@ import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import java.util.Arrays;
-import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Set;
 import java.util.stream.Collectors;
 
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity
+@RequiredArgsConstructor
 public class SecurityConfig {
-    private static final List<String> DEFAULT_CORS_ORIGIN_PATTERNS = List.of(
-            "http://localhost:3000",
-            "http://localhost:5173",
-            "http://127.0.0.1:3000",
-            "http://127.0.0.1:5173",
-            "https://clinicsphere.vercel.app",
-            "https://clinic-app-demo.vercel.app",
-            "https://*.vercel.app"
-    );
 
-    @Value("${app.cors.allowed-origins:http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000,http://127.0.0.1:5173,https://clinicsphere.vercel.app,https://clinic-app-demo.vercel.app,https://*.vercel.app}")
+    private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final AdminDetailsService adminDetailsService;
+
+    @Value("${app.cors.allowed-origins:http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000,http://127.0.0.1:5173,https://clinicsphere.vercel.app,https://clinic-app-demo.vercel.app}")
     private String allowedOriginsProperty;
 
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http, JwtAuthenticationFilter jwtAuthenticationFilter, AuthenticationProvider authenticationProvider) throws Exception {
+    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
                 .csrf(csrf -> csrf.disable())
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .authenticationProvider(authenticationProvider)
+                .authenticationProvider(authenticationProvider())
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/", "/error", "/favicon.ico").permitAll()
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
@@ -69,43 +62,39 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        Set<String> allowedOriginPatterns = new LinkedHashSet<>();
-        allowedOriginPatterns.addAll(
+
+        configuration.setAllowedOriginPatterns(
                 Arrays.stream(allowedOriginsProperty.split(","))
                         .map(String::trim)
-                        .map(value -> value.replaceAll("/+$", ""))
                         .filter(value -> !value.isBlank())
                         .collect(Collectors.toList())
         );
-        allowedOriginPatterns.addAll(DEFAULT_CORS_ORIGIN_PATTERNS);
 
-        configuration.setAllowedOriginPatterns(List.copyOf(allowedOriginPatterns));
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("*"));
         configuration.setExposedHeaders(List.of("Authorization"));
-        configuration.setMaxAge(3600L);
-        configuration.setAllowCredentials(true);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);
+
         return source;
     }
 
     @Bean
-    public AuthenticationProvider authenticationProvider(AdminDetailsService adminDetailsService, PasswordEncoder passwordEncoder) {
+    public AuthenticationProvider authenticationProvider() {
         DaoAuthenticationProvider provider = new DaoAuthenticationProvider();
         provider.setUserDetailsService(adminDetailsService);
-        provider.setPasswordEncoder(passwordEncoder);
+        provider.setPasswordEncoder(passwordEncoder());
         return provider;
+    }
+
+    @Bean
+    public AuthenticationManager authenticationManager(AuthenticationConfiguration config) throws Exception {
+        return config.getAuthenticationManager();
     }
 
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
-    }
-
-    @Bean
-    public AuthenticationManager authenticationManager(AuthenticationConfiguration authenticationConfiguration) throws Exception {
-        return authenticationConfiguration.getAuthenticationManager();
     }
 }
