@@ -136,9 +136,9 @@ public class AppointmentService {
         }
 
         appointment.setStatus(nextStatus);
-        if (nextStatus == AppointmentStatus.COMPLETED && appointment.getVisitedAt() == null) {
+        if (nextStatus == AppointmentStatus.VISITED && appointment.getVisitedAt() == null) {
             appointment.setVisitedAt(LocalDateTime.now());
-        } else if (nextStatus != AppointmentStatus.COMPLETED) {
+        } else if (nextStatus != AppointmentStatus.VISITED) {
             appointment.setVisitedAt(null);
         }
         slotRepository.save(slot);
@@ -152,8 +152,8 @@ public class AppointmentService {
                 .orElseThrow(() -> new ResourceNotFoundException("Appointment not found"));
 
         AppointmentStatus status = appointment.getStatus();
-        if (status != AppointmentStatus.COMPLETED) {
-            throw new BadRequestException("Testimonial can be submitted only for completed appointments");
+        if (status != AppointmentStatus.VISITED) {
+            throw new BadRequestException("Testimonial can be submitted only for visited appointments");
         }
 
         appointment.setTestimonial(request.getTestimonial().trim());
