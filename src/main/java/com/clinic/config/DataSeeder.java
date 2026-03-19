@@ -21,7 +21,7 @@ public class DataSeeder implements CommandLineRunner {
     private final DoctorRepository doctorRepository;
     private final PasswordEncoder passwordEncoder;
 
-    @Value("${seed.admin.username:admin}")
+    @Value("${seed.admin.username:narwar_veer}")
     private String adminUsername;
 
     @Value("${seed.admin.password:admin123}")
