@@ -24,7 +24,9 @@ import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import java.util.Arrays;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Configuration
@@ -32,6 +34,16 @@ import java.util.stream.Collectors;
 @EnableMethodSecurity
 @RequiredArgsConstructor
 public class SecurityConfig {
+    private static final List<String> DEFAULT_CORS_ORIGIN_PATTERNS = List.of(
+            "http://localhost:3000",
+            "http://localhost:5173",
+            "http://127.0.0.1:3000",
+            "http://127.0.0.1:5173",
+            "https://clinicsphere.vercel.app",
+            "https://clinic-app-demo.vercel.app",
+            "https://*.vercel.app"
+    );
+
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final AdminDetailsService adminDetailsService;
@@ -61,28 +73,32 @@ public class SecurityConfig {
         return http.build();
     }
 
-   @Bean
-public CorsConfigurationSource corsConfigurationSource() {
-    CorsConfiguration configuration = new CorsConfiguration();
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration configuration = new CorsConfiguration();
 
-    List<String> origins = Arrays.stream(allowedOriginsProperty.split(","))
-            .map(String::trim)
-            .filter(value -> !value.isBlank())
-            .collect(Collectors.toList());
+        Set<String> allowedOriginPatterns = new LinkedHashSet<>();
+        allowedOriginPatterns.addAll(
+                Arrays.stream(allowedOriginsProperty.split(","))
+                        .map(String::trim)
+                        .map(value -> value.replaceAll("/+$", ""))
+                        .filter(value -> !value.isBlank())
+                        .collect(Collectors.toList())
+        );
+        allowedOriginPatterns.addAll(DEFAULT_CORS_ORIGIN_PATTERNS);
 
-    // USE THIS instead of setAllowedOrigins
-    configuration.setAllowedOriginPatterns(origins); 
-    
-    configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-    configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "Accept", "Origin", "X-Requested-With"));
-    configuration.setExposedHeaders(List.of("Authorization"));
-    configuration.setAllowCredentials(true);
-    configuration.setMaxAge(3600L);
+        configuration.setAllowedOriginPatterns(List.copyOf(allowedOriginPatterns));
+        configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
+        configuration.setAllowedHeaders(List.of("*"));
+        // Allows the browser to read the JWT token if it's sent in the header
+        configuration.setExposedHeaders(List.of("Authorization"));
+        configuration.setMaxAge(3600L);
+        configuration.setAllowCredentials(true);
 
-    UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-    source.registerCorsConfiguration("/**", configuration);
-    return source;
-}
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", configuration);
+        return source;
+    }
 
     @Bean
     public AuthenticationProvider authenticationProvider() {
