@@ -2,70 +2,66 @@ package com.clinic.security;
 
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.SignatureAlgorithm;
+import io.jsonwebtoken.security.Keys;
+import jakarta.annotation.PostConstruct;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.stereotype.Service;
+
+import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.Date;
 import java.util.Map;
 import java.util.UUID;
-import javax.crypto.SecretKey;
-import javax.crypto.spec.SecretKeySpec;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.stereotype.Service;
 
 @Slf4j
 @Service
 public class JwtService {
-    private static final String DEFAULT_JWT_SECRET = "change-this-secret-key-with-at-least-32-characters";
-    private static final long DEFAULT_EXPIRATION_MS = 86_400_000L;
 
-    private final SecretKey signingKey;
-    private final long expirationMs;
+    @Value("${app.jwt.secret:change-this-secret-key-with-at-least-32-characters}")
+    private String secret;
 
-    public JwtService(
-            @Value("${app.jwt.secret:change-this-secret-key-with-at-least-32-characters}") String secret,
-            @Value("${app.jwt.expiration-ms:86400000}") String expirationMsValue
-    ) {
-        SecretKey resolvedSigningKey;
-        long resolvedExpirationMs;
+    @Value("${app.jwt.expiration-ms:86400000}")
+    private long expirationMs;
+
+    private SecretKey signingKey;
+
+    @PostConstruct
+    public void init() {
         try {
-            String normalizedSecret = normalizeSecret(secret);
-            byte[] keyBytes = normalizedSecret.getBytes(StandardCharsets.UTF_8);
-            resolvedSigningKey = new SecretKeySpec(padKeyIfNeeded(keyBytes), "HmacSHA256");
-        } catch (Exception ex) {
-            log.error("Failed to initialize JWT signing key from configuration. Falling back to default secret.", ex);
-            byte[] fallbackKeyBytes = DEFAULT_JWT_SECRET.getBytes(StandardCharsets.UTF_8);
-            resolvedSigningKey = new SecretKeySpec(padKeyIfNeeded(fallbackKeyBytes), "HmacSHA256");
+            byte[] keyBytes = secret.getBytes(StandardCharsets.UTF_8);
+            // Automatically pads or errors if the key is too short for HS256
+            if (keyBytes.length < 32) {
+                log.warn("JWT Secret is too short. Using padding to reach 256-bit requirement.");
+                byte[] paddedKey = new byte[32];
+                System.arraycopy(keyBytes, 0, paddedKey, 0, Math.min(keyBytes.length, 32));
+                this.signingKey = Keys.hmacShaKeyFor(paddedKey);
+            } else {
+                this.signingKey = Keys.hmacShaKeyFor(keyBytes);
+            }
+        } catch (Exception e) {
+            log.error("Critical error initializing JWT Signing Key", e);
+            throw e; 
         }
-
-        try {
-            resolvedExpirationMs = parseExpiration(expirationMsValue);
-        } catch (Exception ex) {
-            log.error("Failed to initialize JWT expiration from configuration. Falling back to default {} ms.", DEFAULT_EXPIRATION_MS, ex);
-            resolvedExpirationMs = DEFAULT_EXPIRATION_MS;
-        }
-
-        this.signingKey = resolvedSigningKey;
-        this.expirationMs = resolvedExpirationMs;
     }
 
     public String generateToken(AdminPrincipal principal) {
-        long now = System.currentTimeMillis();
-        Date issuedAt = new Date(now);
-        Date expiry = new Date(now + expirationMs);
+        Date now = new Date();
+        Date expiry = new Date(now.getTime() + expirationMs);
+
         return Jwts.builder()
-                .setSubject(principal.getUsername())
-                .setId(UUID.randomUUID().toString())
-                .addClaims(Map.of(
+                .subject(principal.getUsername())
+                .id(UUID.randomUUID().toString())
+                .claims(Map.of(
                         "doctorId", principal.getDoctorId(),
                         "role", principal.getAuthorities().iterator().next().getAuthority()
                 ))
-                .setIssuedAt(issuedAt)
-                .setExpiration(expiry)
-                .signWith(signingKey, SignatureAlgorithm.HS256)
+                .issuedAt(now)
+                .expiration(expiry)
+                .signWith(signingKey) // No Algorithm needed here in 0.12.x
                 .compact();
     }
 
@@ -83,13 +79,12 @@ public class JwtService {
     }
 
     public boolean isTokenValid(String token, UserDetails userDetails) {
-        String username = extractUsername(token);
-        return username.equals(userDetails.getUsername()) && !isTokenExpired(token);
+        final String username = extractUsername(token);
+        return (username.equals(userDetails.getUsername())) && !isTokenExpired(token);
     }
 
     private boolean isTokenExpired(String token) {
-        Date expiration = extractAllClaims(token).getExpiration();
-        return expiration.before(new Date());
+        return extractAllClaims(token).getExpiration().before(new Date());
     }
 
     private Claims extractAllClaims(String token) {
@@ -98,38 +93,5 @@ public class JwtService {
                 .build()
                 .parseSignedClaims(token)
                 .getPayload();
-    }
-
-    private byte[] padKeyIfNeeded(byte[] keyBytes) {
-        if (keyBytes.length >= 32) {
-            return keyBytes;
-        }
-        byte[] padded = new byte[32];
-        System.arraycopy(keyBytes, 0, padded, 0, keyBytes.length);
-        for (int i = keyBytes.length; i < padded.length; i++) {
-            padded[i] = (byte) (i + 1);
-        }
-        return padded;
-    }
-
-    private String normalizeSecret(String secret) {
-        if (secret == null || secret.trim().isEmpty()) {
-            log.warn("JWT secret is blank. Falling back to default secret value.");
-            return DEFAULT_JWT_SECRET;
-        }
-        return secret.trim();
-    }
-
-    private long parseExpiration(String expirationMsValue) {
-        if (expirationMsValue == null || expirationMsValue.trim().isEmpty()) {
-            log.warn("JWT expiration is blank. Falling back to default {} ms.", DEFAULT_EXPIRATION_MS);
-            return DEFAULT_EXPIRATION_MS;
-        }
-        try {
-            return Long.parseLong(expirationMsValue.trim());
-        } catch (NumberFormatException ex) {
-            log.warn("Invalid JWT expiration '{}'. Falling back to default {} ms.", expirationMsValue, DEFAULT_EXPIRATION_MS);
-            return DEFAULT_EXPIRATION_MS;
-        }
     }
 }
