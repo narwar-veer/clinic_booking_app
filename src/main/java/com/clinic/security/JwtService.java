@@ -29,10 +29,27 @@ public class JwtService {
             @Value("${app.jwt.secret}") String secret,
             @Value("${app.jwt.expiration-ms}") String expirationMsValue
     ) {
-        String normalizedSecret = normalizeSecret(secret);
-        byte[] keyBytes = normalizedSecret.getBytes(StandardCharsets.UTF_8);
-        this.signingKey = Keys.hmacShaKeyFor(padKeyIfNeeded(keyBytes));
-        this.expirationMs = parseExpiration(expirationMsValue);
+        SecretKey resolvedSigningKey;
+        long resolvedExpirationMs;
+        try {
+            String normalizedSecret = normalizeSecret(secret);
+            byte[] keyBytes = normalizedSecret.getBytes(StandardCharsets.UTF_8);
+            resolvedSigningKey = Keys.hmacShaKeyFor(padKeyIfNeeded(keyBytes));
+        } catch (Exception ex) {
+            log.error("Failed to initialize JWT signing key from configuration. Falling back to default secret.", ex);
+            byte[] fallbackKeyBytes = DEFAULT_JWT_SECRET.getBytes(StandardCharsets.UTF_8);
+            resolvedSigningKey = Keys.hmacShaKeyFor(padKeyIfNeeded(fallbackKeyBytes));
+        }
+
+        try {
+            resolvedExpirationMs = parseExpiration(expirationMsValue);
+        } catch (Exception ex) {
+            log.error("Failed to initialize JWT expiration from configuration. Falling back to default {} ms.", DEFAULT_EXPIRATION_MS, ex);
+            resolvedExpirationMs = DEFAULT_EXPIRATION_MS;
+        }
+
+        this.signingKey = resolvedSigningKey;
+        this.expirationMs = resolvedExpirationMs;
     }
 
     public String generateToken(AdminPrincipal principal) {
