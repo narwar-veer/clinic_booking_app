@@ -36,7 +36,7 @@ public class SecurityConfig {
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final AdminDetailsService adminDetailsService;
 
-    @Value("${app.cors.allowed-origins:http://localhost:3000,http://localhost:5173,https://clinicsphere.vercel.app,https://clinic-app-demo.vercel.app}")
+    @Value("${app.cors.allowed-origins:http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000,http://127.0.0.1:5173,https://clinicsphere.vercel.app,https://clinic-app-demo.vercel.app,https://*.vercel.app}")
     private String allowedOriginsProperty;
 
     @Bean
@@ -47,19 +47,13 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authenticationProvider(authenticationProvider())
                 .authorizeHttpRequests(auth -> auth
-                        // Public Assets
-                        .requestMatchers("/", "/error", "/favicon.ico", "/actuator/health").permitAll()
-                        
-                        // Pre-flight OPTIONS requests
+                        // Publicly accessible paths
+                        .requestMatchers("/", "/error", "/favicon.ico").permitAll()
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                        
-                        // Public Read-Only APIs
                         .requestMatchers(HttpMethod.GET, "/api/doctor/**", "/api/clinic/**", "/api/slots/**", "/api/health").permitAll()
-                        
-                        // Public Form Submissions & Admin Login
-                        .requestMatchers(HttpMethod.POST, "/api/appointments/**", "/api/admin/login/**").permitAll()
-                        
-                        // Secure everything else (Admin Dashboard, etc.)
+                        .requestMatchers(HttpMethod.POST, "/api/appointments", "/api/appointments/**", "/api/admin/login", "/api/admin/login/**").permitAll()
+                        .requestMatchers("/actuator/health").permitAll()
+                        // Any other request requires authentication
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
@@ -71,17 +65,19 @@ public class SecurityConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
 
-        List<String> origins = Arrays.stream(allowedOriginsProperty.split(","))
-                .map(String::trim)
-                .filter(value -> !value.isBlank())
-                .collect(Collectors.toList());
-
-        configuration.setAllowedOrigins(origins);
+        configuration.setAllowedOriginPatterns(
+                Arrays.stream(allowedOriginsProperty.split(","))
+                        .map(String::trim)
+                        .map(value -> value.replaceAll("/+$", ""))
+                        .filter(value -> !value.isBlank())
+                        .collect(Collectors.toList())
+        );
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "Accept", "Origin", "X-Requested-With"));
+        configuration.setAllowedHeaders(List.of("*"));
+        // Allows the browser to read the JWT token if it's sent in the header
         configuration.setExposedHeaders(List.of("Authorization"));
-        configuration.setAllowCredentials(true);
         configuration.setMaxAge(3600L);
+        configuration.setAllowCredentials(true);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);
