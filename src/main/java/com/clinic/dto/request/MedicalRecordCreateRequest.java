@@ -1,5 +1,7 @@
 package com.clinic.dto.request;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonAlias;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
@@ -17,5 +19,7 @@ public class MedicalRecordCreateRequest {
 
     private String prescriptionNotes;
 
-    private String attachmentUrl;
+    @JsonAlias("referredBy")
+    @JsonProperty("referred_by")
+    private String referredBy;
 }
