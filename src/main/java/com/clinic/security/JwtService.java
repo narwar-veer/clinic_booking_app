@@ -1,94 +1,89 @@
-package com.clinic.service;
+package com.clinic.security;
 
-import com.clinic.dto.request.AdminLoginRequest;
-import com.clinic.dto.response.AdminLoginResponse;
-import com.clinic.exception.UnauthorizedException;
-import com.clinic.security.AdminPrincipal;
-import com.clinic.security.JwtService;
-import lombok.RequiredArgsConstructor;
-import org.springframework.security.authentication.AuthenticationManager;
-import org.springframework.security.authentication.BadCredentialsException;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.authentication.AnonymousAuthenticationToken;
-import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.stereotype.Service;
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.SignatureAlgorithm;
+import io.jsonwebtoken.security.Keys;
+import java.nio.charset.StandardCharsets;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.util.Date;
+import java.util.Map;
+import java.util.UUID;
+import javax.crypto.SecretKey;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.core.userdetails.UserDetails;
 
-@Service
-@RequiredArgsConstructor
-public class AdminService {
+public class JwtService {
 
-    private final AuthenticationManager authenticationManager;
-    private final JwtService jwtService;
-    private final AdminSessionService adminSessionService;
+    private final SecretKey signingKey;
+    private final long expirationMs;
 
-    public AdminLoginResponse login(AdminLoginRequest request) {
-        try {
-            Authentication authentication = authenticationManager.authenticate(
-                    new UsernamePasswordAuthenticationToken(request.getUsername(), request.getPassword())
-            );
-            AdminPrincipal principal = (AdminPrincipal) authentication.getPrincipal();
-            String token = jwtService.generateToken(principal);
-            String tokenId = jwtService.extractTokenId(token);
-            if (tokenId == null || tokenId.isBlank()) {
-                throw new UnauthorizedException("Failed to create authenticated session");
-            }
-            adminSessionService.registerSession(
-                    tokenId,
-                    principal.getUsername(),
-                    principal.getDoctorId(),
-                    jwtService.extractExpiration(token)
-            );
-            return AdminLoginResponse.builder()
-                    .token(token)
-                    .username(principal.getUsername())
-                    .role(principal.getAuthorities().iterator().next().getAuthority())
-                    .doctorId(principal.getDoctorId())
-                    .build();
-        } catch (BadCredentialsException ex) {
-            throw new UnauthorizedException("Invalid username or password");
-        }
+    public JwtService(@Value("${app.jwt.secret}") String secret,
+                      @Value("${app.jwt.expiration}") long expirationMs) {
+        byte[] keyBytes = padKeyIfNeeded(secret.getBytes(StandardCharsets.UTF_8));
+        this.signingKey = Keys.hmacShaKeyFor(keyBytes);
+        this.expirationMs = expirationMs;
     }
 
-    public void logout(String authorizationHeader) {
-        String token = extractBearerToken(authorizationHeader);
-        if (token == null) {
-            throw new UnauthorizedException("Authentication token is required");
-        }
-        try {
-            String tokenId = jwtService.extractTokenId(token);
-            if (tokenId != null && !tokenId.isBlank()) {
-                adminSessionService.revokeSession(tokenId);
-            }
-        } catch (IllegalArgumentException ex) {
-            throw new UnauthorizedException("Invalid authentication token");
-        }
-        SecurityContextHolder.clearContext();
+    public String generateToken(AdminPrincipal principal) {
+        long now = System.currentTimeMillis();
+        Date issuedAt = new Date(now);
+        Date expiry = new Date(now + expirationMs);
+
+        return Jwts.builder()
+                .setSubject(principal.getUsername())
+                .setId(UUID.randomUUID().toString())
+                .addClaims(Map.of(
+                        "doctorId", principal.getDoctorId(),
+                        "role", principal.getAuthorities().iterator().next().getAuthority()
+                ))
+                .setIssuedAt(issuedAt)
+                .setExpiration(expiry)
+                .signWith(signingKey, SignatureAlgorithm.HS256)
+                .compact();
     }
 
-    public Long getAuthenticatedDoctorId() {
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        if (authentication == null
-                || !authentication.isAuthenticated()
-                || authentication instanceof AnonymousAuthenticationToken) {
-            throw new UnauthorizedException("Authentication required");
-        }
-
-        Object principal = authentication.getPrincipal();
-        if (principal instanceof AdminPrincipal adminPrincipal && adminPrincipal.getDoctorId() != null) {
-            return adminPrincipal.getDoctorId();
-        }
-        throw new UnauthorizedException("Unable to resolve authenticated admin");
+    public String extractUsername(String token) {
+        return extractAllClaims(token).getSubject();
     }
 
-    private String extractBearerToken(String authorizationHeader) {
-        if (authorizationHeader == null || authorizationHeader.isBlank()) {
-            return null;
+    public String extractTokenId(String token) {
+        return extractAllClaims(token).getId();
+    }
+
+    public LocalDateTime extractExpiration(String token) {
+        Date expiration = extractAllClaims(token).getExpiration();
+        return LocalDateTime.ofInstant(expiration.toInstant(), ZoneId.systemDefault());
+    }
+
+    public boolean isTokenValid(String token, UserDetails userDetails) {
+        String username = extractUsername(token);
+        return username.equals(userDetails.getUsername()) && !isTokenExpired(token);
+    }
+
+    private boolean isTokenExpired(String token) {
+        Date expiration = extractAllClaims(token).getExpiration();
+        return expiration.before(new Date());
+    }
+
+    private Claims extractAllClaims(String token) {
+        return Jwts.parser()
+                .verifyWith(signingKey)
+                .build()
+                .parseSignedClaims(token)
+                .getPayload();
+    }
+
+    private byte[] padKeyIfNeeded(byte[] keyBytes) {
+        if (keyBytes.length >= 32) {
+            return keyBytes;
         }
-        if (!authorizationHeader.startsWith("Bearer ")) {
-            return null;
+        byte[] padded = new byte[32];
+        System.arraycopy(keyBytes, 0, padded, 0, keyBytes.length);
+        for (int i = keyBytes.length; i < padded.length; i++) {
+            padded[i] = (byte) (i + 1);
         }
-        String token = authorizationHeader.substring(7).trim();
-        return token.isEmpty() ? null : token;
+        return padded;
     }
 }
