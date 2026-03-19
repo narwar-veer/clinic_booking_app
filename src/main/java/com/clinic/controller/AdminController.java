@@ -35,6 +35,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -51,6 +52,12 @@ public class AdminController {
     @PostMapping("/login")
     public AdminLoginResponse login(@Valid @RequestBody AdminLoginRequest request) {
         return adminService.login(request);
+    }
+
+    @PostMapping("/logout")
+    public MessageResponse logout(@RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorizationHeader) {
+        adminService.logout(authorizationHeader);
+        return new MessageResponse("Logged out successfully");
     }
 
     @GetMapping("/appointments")
