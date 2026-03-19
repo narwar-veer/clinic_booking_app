@@ -5,8 +5,11 @@ import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.security.Keys;
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.Date;
 import java.util.Map;
+import java.util.UUID;
 import javax.crypto.SecretKey;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -33,6 +36,7 @@ public class JwtService {
         Date expiry = new Date(now + expirationMs);
         return Jwts.builder()
                 .setSubject(principal.getUsername())
+                .setId(UUID.randomUUID().toString())
                 .addClaims(Map.of(
                         "doctorId", principal.getDoctorId(),
                         "role", principal.getAuthorities().iterator().next().getAuthority()
@@ -45,6 +49,15 @@ public class JwtService {
 
     public String extractUsername(String token) {
         return extractAllClaims(token).getSubject();
+    }
+
+    public String extractTokenId(String token) {
+        return extractAllClaims(token).getId();
+    }
+
+    public LocalDateTime extractExpiration(String token) {
+        Date expiration = extractAllClaims(token).getExpiration();
+        return LocalDateTime.ofInstant(expiration.toInstant(), ZoneId.systemDefault());
     }
 
     public boolean isTokenValid(String token, UserDetails userDetails) {
