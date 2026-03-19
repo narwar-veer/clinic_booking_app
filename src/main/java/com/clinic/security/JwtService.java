@@ -11,23 +11,28 @@ import java.util.Date;
 import java.util.Map;
 import java.util.UUID;
 import javax.crypto.SecretKey;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Service;
 
+@Slf4j
 @Service
 public class JwtService {
+    private static final String DEFAULT_JWT_SECRET = "change-this-secret-key-with-at-least-32-characters";
+    private static final long DEFAULT_EXPIRATION_MS = 86_400_000L;
 
     private final SecretKey signingKey;
     private final long expirationMs;
 
     public JwtService(
             @Value("${app.jwt.secret}") String secret,
-            @Value("${app.jwt.expiration-ms}") long expirationMs
+            @Value("${app.jwt.expiration-ms}") String expirationMsValue
     ) {
-        byte[] keyBytes = secret.getBytes(StandardCharsets.UTF_8);
+        String normalizedSecret = normalizeSecret(secret);
+        byte[] keyBytes = normalizedSecret.getBytes(StandardCharsets.UTF_8);
         this.signingKey = Keys.hmacShaKeyFor(padKeyIfNeeded(keyBytes));
-        this.expirationMs = expirationMs;
+        this.expirationMs = parseExpiration(expirationMsValue);
     }
 
     public String generateToken(AdminPrincipal principal) {
@@ -88,5 +93,26 @@ public class JwtService {
             padded[i] = (byte) (i + 1);
         }
         return padded;
+    }
+
+    private String normalizeSecret(String secret) {
+        if (secret == null || secret.trim().isEmpty()) {
+            log.warn("JWT secret is blank. Falling back to default secret value.");
+            return DEFAULT_JWT_SECRET;
+        }
+        return secret.trim();
+    }
+
+    private long parseExpiration(String expirationMsValue) {
+        if (expirationMsValue == null || expirationMsValue.trim().isEmpty()) {
+            log.warn("JWT expiration is blank. Falling back to default {} ms.", DEFAULT_EXPIRATION_MS);
+            return DEFAULT_EXPIRATION_MS;
+        }
+        try {
+            return Long.parseLong(expirationMsValue.trim());
+        } catch (NumberFormatException ex) {
+            log.warn("Invalid JWT expiration '{}'. Falling back to default {} ms.", expirationMsValue, DEFAULT_EXPIRATION_MS);
+            return DEFAULT_EXPIRATION_MS;
+        }
     }
 }
