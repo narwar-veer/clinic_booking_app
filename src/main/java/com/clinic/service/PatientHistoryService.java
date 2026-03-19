@@ -71,11 +71,11 @@ public class PatientHistoryService {
         medicalRecord.setAppointment(appointment);
         medicalRecord.setDiagnosis(request.getDiagnosis());
         medicalRecord.setPrescriptionNotes(request.getPrescriptionNotes());
-        medicalRecord.setAttachmentUrl(request.getAttachmentUrl());
+        medicalRecord.setReferredBy(request.getReferredBy());
         medicalRecord = medicalRecordRepository.save(medicalRecord);
 
-        if (appointment.getStatus() != AppointmentStatus.COMPLETED) {
-            appointment.setStatus(AppointmentStatus.COMPLETED);
+        if (appointment.getStatus() != AppointmentStatus.VISITED) {
+            appointment.setStatus(AppointmentStatus.VISITED);
             if (appointment.getVisitedAt() == null) {
                 appointment.setVisitedAt(LocalDateTime.now());
             }
