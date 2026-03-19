@@ -3,6 +3,7 @@ package com.clinic.config;
 import com.clinic.security.AdminDetailsService;
 import com.clinic.security.JwtAuthenticationFilter;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -24,6 +25,7 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Configuration
 @EnableWebSecurity
@@ -33,6 +35,9 @@ public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final AdminDetailsService adminDetailsService;
+
+    @Value("${app.cors.allowed-origins:http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000,http://127.0.0.1:5173,https://clinicsphere.vercel.app,https://clinic-app-demo.vercel.app}")
+    private String allowedOriginsProperty;
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -46,7 +51,7 @@ public class SecurityConfig {
                         .requestMatchers("/", "/error", "/favicon.ico").permitAll()
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/doctor/**", "/api/clinic/**", "/api/slots/**", "/api/health").permitAll()
-                        .requestMatchers(HttpMethod.POST, "/api/appointments/**", "/api/admin/login/**").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/appointments", "/api/appointments/**", "/api/admin/login", "/api/admin/login/**").permitAll()
                         .requestMatchers("/actuator/health").permitAll()
                         // Any other request requires authentication
                         .anyRequest().authenticated()
@@ -59,24 +64,21 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        
-        // Allowed Origins - Ensure NO trailing slashes
-        configuration.setAllowedOrigins(List.of(
-                "http://localhost:3000",
-                "https://clinicsphere.vercel.app",
-                "https://clinic-app-demo.vercel.app"
-        ));
-        
+
+        configuration.setAllowedOriginPatterns(
+                Arrays.stream(allowedOriginsProperty.split(","))
+                        .map(String::trim)
+                        .filter(value -> !value.isBlank())
+                        .collect(Collectors.toList())
+        );
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "Accept"));
-        
+        configuration.setAllowedHeaders(List.of("*"));
         // Allows the browser to read the JWT token if it's sent in the header
         configuration.setExposedHeaders(List.of("Authorization"));
-        
+        configuration.setMaxAge(3600L);
         configuration.setAllowCredentials(true);
-        
+
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-        // Register for all paths to ensure consistency
         source.registerCorsConfiguration("/**", configuration);
         return source;
     }
