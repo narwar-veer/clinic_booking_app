@@ -14,7 +14,6 @@ import java.util.UUID;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Service;
@@ -31,15 +30,14 @@ public class JwtService {
     private final byte[] secretBytes;
     private final long expirationMs;
 
-    @Autowired
     public JwtService(
             ObjectMapper objectMapper,
             @Value("${app.jwt.secret:change-this-secret-key-with-at-least-32-characters}") String secret,
-            @Value("${app.jwt.expiration-ms:86400000}") Long expirationMs
+            @Value("${app.jwt.expiration-ms:86400000}") String expirationMsValue
     ) {
         this.objectMapper = objectMapper;
         this.secretBytes = (secret == null || secret.isBlank() ? DEFAULT_JWT_SECRET : secret.trim()).getBytes(StandardCharsets.UTF_8);
-        this.expirationMs = (expirationMs == null ? 86400000L : expirationMs);
+        this.expirationMs = parseExpiration(expirationMsValue);
     }
 
     public String generateToken(AdminPrincipal principal) {
@@ -68,6 +66,11 @@ public class JwtService {
 
     public String extractTokenId(String token) {
         return asString(parseAndValidatePayload(token).get("jti"));
+    }
+
+    public LocalDateTime extractExpiration(String token) {
+        long expEpochSec = asLong(parseAndValidatePayload(token).get("exp"));
+        return LocalDateTime.ofInstant(Instant.ofEpochSecond(expEpochSec), ZoneId.systemDefault());
     }
 
     public boolean isTokenValid(String token, UserDetails userDetails) {
@@ -126,5 +129,17 @@ public class JwtService {
         if (value instanceof Number number) return number.longValue();
         if (value instanceof String s) return Long.parseLong(s);
         throw new IllegalArgumentException("Invalid JWT numeric claim");
+    }
+
+    private long parseExpiration(String expirationMsValue) {
+        if (expirationMsValue == null || expirationMsValue.trim().isEmpty()) {
+            return 86400000L;
+        }
+        try {
+            return Long.parseLong(expirationMsValue.trim());
+        } catch (NumberFormatException ex) {
+            log.warn("Invalid JWT expiration '{}', falling back to default 86400000", expirationMsValue);
+            return 86400000L;
+        }
     }
 }
