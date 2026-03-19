@@ -44,8 +44,8 @@ public class MedicalRecord {
     @Column(name = "prescription_notes", columnDefinition = "TEXT")
     private String prescriptionNotes;
 
-    @Column(name = "attachment_url", columnDefinition = "TEXT")
-    private String attachmentUrl;
+    @Column(name = "referred_by", length = 120)
+    private String referredBy;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
