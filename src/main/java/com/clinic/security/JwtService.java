@@ -3,7 +3,6 @@ package com.clinic.security;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
-import io.jsonwebtoken.security.Keys;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -11,6 +10,7 @@ import java.util.Date;
 import java.util.Map;
 import java.util.UUID;
 import javax.crypto.SecretKey;
+import javax.crypto.spec.SecretKeySpec;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -26,19 +26,19 @@ public class JwtService {
     private final long expirationMs;
 
     public JwtService(
-            @Value("${app.jwt.secret}") String secret,
-            @Value("${app.jwt.expiration-ms}") String expirationMsValue
+            @Value("${app.jwt.secret:change-this-secret-key-with-at-least-32-characters}") String secret,
+            @Value("${app.jwt.expiration-ms:86400000}") String expirationMsValue
     ) {
         SecretKey resolvedSigningKey;
         long resolvedExpirationMs;
         try {
             String normalizedSecret = normalizeSecret(secret);
             byte[] keyBytes = normalizedSecret.getBytes(StandardCharsets.UTF_8);
-            resolvedSigningKey = Keys.hmacShaKeyFor(padKeyIfNeeded(keyBytes));
+            resolvedSigningKey = new SecretKeySpec(padKeyIfNeeded(keyBytes), "HmacSHA256");
         } catch (Exception ex) {
             log.error("Failed to initialize JWT signing key from configuration. Falling back to default secret.", ex);
             byte[] fallbackKeyBytes = DEFAULT_JWT_SECRET.getBytes(StandardCharsets.UTF_8);
-            resolvedSigningKey = Keys.hmacShaKeyFor(padKeyIfNeeded(fallbackKeyBytes));
+            resolvedSigningKey = new SecretKeySpec(padKeyIfNeeded(fallbackKeyBytes), "HmacSHA256");
         }
 
         try {
