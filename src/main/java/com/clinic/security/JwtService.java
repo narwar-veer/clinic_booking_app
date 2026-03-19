@@ -14,8 +14,8 @@ import javax.crypto.SecretKey;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.userdetails.UserDetails;
 
-public class JwtService {
-
+@Service
+public class JwtService
     private final SecretKey signingKey;
     private final long expirationMs;
 
